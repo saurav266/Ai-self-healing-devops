@@ -1,37 +1,35 @@
-FROM jenkins/jenkins:lts-jdk21
+pipeline {
+    agent any
 
-USER root
+    stages {
+        stage('Install Dependencies') {
+            steps {
+                sh 'cd app && npm ci'
+            }
+        }
 
-# Install basic tools
-RUN apt-get update && \
-    apt-get install -y ca-certificates curl gnupg lsb-release && \
-    rm -rf /var/lib/apt/lists/*
+        stage('Test') {
+            steps {
+                sh 'cd app && node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand'
+            }
+        }
 
-# Install Node.js 22
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
-    npm --version && \
-    node --version
+        stage('Security Audit') {
+            steps {
+                sh 'cd app && npm audit --omit=dev'
+            }
+        }
 
-# Install Docker CLI
-RUN install -m 0755 -d /etc/apt/keyrings && \
-    curl -fsSL https://download.docker.com/linux/debian/gpg \
-      -o /etc/apt/keyrings/docker.asc && \
-    chmod a+r /etc/apt/keyrings/docker.asc && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
-      $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-      > /etc/apt/sources.list.d/docker.list && \
-    apt-get update && \
-    apt-get install -y docker-ce-cli && \
-    rm -rf /var/lib/apt/lists/*
+        stage('Docker Build') {
+            steps {
+                sh 'docker build -t self-healing-node-app:${BUILD_NUMBER} app'
+            }
+        }
 
-# Install Trivy
-RUN curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key \
-      | gpg --dearmor -o /usr/share/keyrings/trivy.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
-      > /etc/apt/sources.list.d/trivy.list && \
-    apt-get update && \
-    apt-get install -y trivy && \
-    rm -rf /var/lib/apt/lists/*
-
-USER jenkins
+        stage('Trivy Scan') {
+            steps {
+                sh 'trivy image --severity HIGH,CRITICAL --exit-code 1 self-healing-node-app:${BUILD_NUMBER}'
+            }
+        }
+    }
+}

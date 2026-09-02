@@ -4,6 +4,8 @@ kind: Service
 metadata:
   name: self-healing-node-service
   namespace: self-healing
+  labels:
+    app: self-healing-node-app
 
 spec:
   type: ClusterIP

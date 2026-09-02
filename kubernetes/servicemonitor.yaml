@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+
+metadata:
+  name: self-healing-node-monitor
+  namespace: self-healing
+  labels:
+    release: monitoring
+
+spec:
+  selector:
+    matchLabels:
+      app: self-healing-node-app
+
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

@@ -2,7 +2,12 @@
 # Dependencies
 # =========================
 
-FROM node:22-alpine AS dependencies
+FROM node:24-alpine AS dependencies
+
+RUN apk upgrade --no-cache
+
+# Upgrade npm to latest npm 11
+RUN npm install -g npm@11.19.1
 
 WORKDIR /app
 
@@ -15,7 +20,12 @@ RUN npm ci --omit=dev
 # Runtime
 # =========================
 
-FROM node:22-alpine AS runtime
+FROM node:24-alpine AS runtime
+
+RUN apk upgrade --no-cache
+
+# Upgrade npm to latest npm 11
+RUN npm install -g npm@11.19.1
 
 WORKDIR /app
 

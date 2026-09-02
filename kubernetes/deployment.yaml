@@ -22,9 +22,9 @@ spec:
       containers:
         - name: node-app
 
-          image: self-healing-node-app:1.1
+          image: saurav8789/self-healing-node-app:9
 
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
 
           ports:
             - name: http

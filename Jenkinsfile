@@ -58,5 +58,29 @@ pipeline {
                 }
             }
         }
+        stage('Update GitOps Manifest') {
+    steps {
+        withCredentials([
+            usernamePassword(
+                credentialsId: 'github-gitops',
+                usernameVariable: 'GIT_USERNAME',
+                passwordVariable: 'GIT_TOKEN'
+            )
+        ]) {
+            sh '''
+                git config user.name "saurav266"
+                git config user.email "saurav840963@gmail.com"
+
+                sed -i "s|image: saurav8789/self-healing-node-app:.*|image: saurav8789/self-healing-node-app:${BUILD_NUMBER}|" kubernetes/deployment.yaml
+
+                git add kubernetes/deployment.yaml
+
+                git diff --cached --quiet || git commit -m "Update image to ${BUILD_NUMBER}"
+
+                git push https://${GIT_USERNAME}:${GIT_TOKEN}@github.com/saurav266/Ai-self-healing-devops.git HEAD:main
+            '''
+        }
+    }
+}
     }
 }

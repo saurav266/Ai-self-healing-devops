@@ -204,3 +204,85 @@ export async function rollbackDeployment() {
         result: response
     };
 }
+export async function getDeploymentHistory() {
+    const response =
+        await appsApi.readNamespacedDeployment({
+            name: DEPLOYMENT,
+            namespace: NAMESPACE
+        });
+
+    const deployment = response;
+
+    const revision =
+        deployment.metadata?.annotations?.[
+            "deployment.kubernetes.io/revision"
+        ] || "0";
+
+    return {
+        currentRevision: Number(revision),
+        deployment: DEPLOYMENT
+    };
+}
+export async function getPreviousDeploymentRevision() {
+    const response =
+        await appsApi.readNamespacedDeployment({
+            name: DEPLOYMENT,
+            namespace: NAMESPACE
+        });
+
+    const deployment = response;
+
+    const currentRevision = Number(
+        deployment.metadata?.annotations?.[
+            "deployment.kubernetes.io/revision"
+        ] || 0
+    );
+
+    if (currentRevision <= 1) {
+        return null;
+    }
+
+    const replicaSetsResponse =
+        await appsApi.listNamespacedReplicaSet({
+            namespace: NAMESPACE,
+            labelSelector: `app=${DEPLOYMENT}`
+        });
+
+    const replicaSets =
+        replicaSetsResponse.items;
+
+    const revisions = replicaSets
+        .map((rs) => {
+            const revision = Number(
+                rs.metadata?.annotations?.[
+                    "deployment.kubernetes.io/revision"
+                ] || 0
+            );
+
+            const image =
+                rs.spec?.template?.spec?.containers?.[0]?.image;
+
+            return {
+                revision,
+                image,
+                name: rs.metadata?.name
+            };
+        })
+        .filter(
+            (item) =>
+                item.revision > 0 &&
+                item.image
+        )
+        .sort(
+            (a, b) =>
+                b.revision - a.revision
+        );
+
+    const previous =
+        revisions.find(
+            (item) =>
+                item.revision < currentRevision
+        );
+
+    return previous || null;
+}

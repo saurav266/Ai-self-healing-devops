@@ -1,4 +1,8 @@
-import { getPodHealth, restartPod } from "./kubernetes.js";
+import {
+    getPodHealth,
+    restartPod,
+    waitForRecovery
+} from "./kubernetes.js";
 
 const COOLDOWN_MS = Number(
     process.env.REMEDIATION_COOLDOWN_MS || 60000
@@ -77,14 +81,30 @@ export async function remediate(podName, action) {
         Date.now()
     );
 
-    const result = await restartPod(
-        podName
-    );
+const result = await restartPod(podName);
 
-    return {
-        status: "EXECUTED",
-        pod: podName,
-        action: "RESTART",
-        result
-    };
+console.log(
+    `[AI REMEDIATOR] Restart requested for ${podName}`
+);
+
+const recovery =
+    await waitForRecovery({
+        removedPod: podName,
+        timeoutMs: 60000,
+        intervalMs: 5000
+    });
+
+return {
+    status: recovery.status === "RECOVERED"
+        ? "RECOVERED"
+        : "RECOVERY_TIMEOUT",
+
+    pod: podName,
+
+    action: "RESTART",
+
+    result,
+
+    recovery
+};
 }

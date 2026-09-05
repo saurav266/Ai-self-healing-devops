@@ -186,3 +186,21 @@ export async function waitForRecovery({
             finalStatus.desiredReplicas
     };
 }
+export async function rollbackDeployment() {
+    if (!DEPLOYMENT) {
+        throw new Error("Deployment name is required");
+    }
+
+    const response =
+        await appsApi.createNamespacedDeploymentRollback({
+            name: DEPLOYMENT,
+            namespace: NAMESPACE
+        });
+
+    return {
+        deployment: DEPLOYMENT,
+        action: "ROLLBACK",
+        status: "ROLLBACK_REQUESTED",
+        result: response
+    };
+}

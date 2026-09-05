@@ -22,7 +22,7 @@ spec:
       containers:
         - name: node-app
 
-          image: saurav8789/self-healing-node-app:12
+          image: saurav8789/self-healing-node-app:9
 
           imagePullPolicy: Always
 

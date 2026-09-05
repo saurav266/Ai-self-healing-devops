@@ -197,3 +197,23 @@ export async function rollbackToPreviousVersion() {
         result
     };
 }
+export async function previewRollback() {
+    const previous =
+        await getPreviousDeploymentRevision();
+
+    if (!previous) {
+        return {
+            status: "NO_PREVIOUS_VERSION"
+        };
+    }
+
+    const current =
+        await getGitOpsImage();
+
+    return {
+        status: "ROLLBACK_AVAILABLE",
+        currentImage: current,
+        previousRevision: previous.revision,
+        previousImage: previous.image
+    };
+}

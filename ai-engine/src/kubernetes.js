@@ -286,3 +286,73 @@ export async function getPreviousDeploymentRevision() {
 
     return previous || null;
 }
+export async function waitForDeploymentRecovery({
+    timeoutMs = 120000,
+    intervalMs = 5000
+} = {}) {
+
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+
+        const deployment =
+            await getDeploymentStatus();
+
+        const recovered =
+            deployment.readyReplicas >=
+                deployment.desiredReplicas &&
+            deployment.availableReplicas >=
+                deployment.desiredReplicas;
+
+        if (recovered) {
+            return {
+                status: "RECOVERED",
+                recoveryTimeSeconds:
+                    Number(
+                        (
+                            (Date.now() - startTime) /
+                            1000
+                        ).toFixed(2)
+                    ),
+                readyReplicas:
+                    deployment.readyReplicas,
+                availableReplicas:
+                    deployment.availableReplicas,
+                desiredReplicas:
+                    deployment.desiredReplicas
+            };
+        }
+
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    intervalMs
+                )
+        );
+    }
+
+    const finalStatus =
+        await getDeploymentStatus();
+
+    return {
+        status: "TIMEOUT",
+
+        recoveryTimeSeconds:
+            Number(
+                (
+                    (Date.now() - startTime) /
+                    1000
+                ).toFixed(2)
+            ),
+
+        readyReplicas:
+            finalStatus.readyReplicas,
+
+        availableReplicas:
+            finalStatus.availableReplicas,
+
+        desiredReplicas:
+            finalStatus.desiredReplicas
+    };
+}

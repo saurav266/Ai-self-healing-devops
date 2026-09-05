@@ -1,8 +1,13 @@
 import express from "express";
 import { detectCpuAnomaly } from "./detector.js";
-import { queryPrometheus } from "./prometheus.js";
+import { analyzeSystem } from "./analyzer.js";
+import {
+    queryPrometheus,
+    getHttpErrorRate
+} from "./prometheus.js";
 import { getNewRestartCount, clearPodState } from "./state.js";
 import { calculateIncidentScore } from "./incidentScore.js";
+
 import {
     getPodHealth,
     getHpaStatus,
@@ -118,73 +123,9 @@ app.get("/context", async (req, res) => {
 });
 app.get("/analyze", async (req, res) => {
     try {
-        const cpuQuery = `
-            100 *
-            sum(
-                rate(
-                    self_healing_process_cpu_user_seconds_total{
-                        job="self-healing-node-service"
-                    }[5m]
-                )
-            ) by (pod)
-        `;
+        const analysis = await analyzeSystem();
 
-        const [cpuResults, pods, hpa] = await Promise.all([
-            queryPrometheus(cpuQuery),
-            getPodHealth(),
-            getHpaStatus()
-        ]);
-
-        const analysis = cpuResults.map((item) => {
-            const podName = item.metric?.pod || "unknown";
-
-            const cpu = Number(item.value?.[1] || 0);
-
-            const pod = pods.find(
-                (p) => p.pod === podName
-            );
-            clearPodState(pods.map((pod) => pod.pod));
-            const restartCount = pod?.restartCount || 0;
-
-            const newRestarts = getNewRestartCount(
-                podName,
-                restartCount
-            );
-            const incident = calculateIncidentScore({
-                cpu,
-                newRestarts,
-                podReady: pod?.ready ?? false,
-                hpaCurrentReplicas: hpa.currentReplicas,
-                hpaDesiredReplicas: hpa.desiredReplicas,
-                hpaMaxReplicas: hpa.maxReplicas
-            });
-
-            const decision = makeDecision({
-                cpu,
-                restartCount,
-                newRestarts,
-                hpaCurrentReplicas: hpa.currentReplicas,
-                hpaDesiredReplicas: hpa.desiredReplicas,
-                hpaMaxReplicas: hpa.maxReplicas,
-                podReady: pod?.ready ?? false
-            });
-          return {
-            pod: podName,
-            cpu: Number(cpu.toFixed(2)),
-            ready: pod?.ready ?? false,
-            restartCount,
-            newRestarts,
-            incident,
-            decision
-        };
-        });
-
-        res.json({
-            timestamp: new Date().toISOString(),
-            hpa,
-            pods: analysis
-        });
-
+        res.json(analysis);
     } catch (error) {
         console.error(error);
 
@@ -195,44 +136,69 @@ app.get("/analyze", async (req, res) => {
 });
 app.post("/remediate", async (req, res) => {
     try {
-        const { pod, action } = req.body;
+        const { pod: podName, action } = req.body;
 
-        if (!pod) {
+        if (!podName) {
             return res.status(400).json({
-                error: "pod is required"
+                error: "Pod name is required"
             });
         }
 
         if (action !== "RESTART") {
             return res.status(400).json({
-                error: "Only RESTART remediation is currently allowed"
+                error: "Only RESTART action is currently supported"
             });
         }
 
         const pods = await getPodHealth();
 
         const targetPod = pods.find(
-            (item) => item.pod === pod
+            (pod) => pod.pod === podName
         );
 
         if (!targetPod) {
             return res.status(404).json({
-                error: "Pod not found"
+                error: "Pod not found",
+                pod: podName
             });
         }
 
-        if (targetPod.ready && targetPod.restartCount < 2) {
+        /*
+         * Safety rule:
+         *
+         * Restart only if:
+         * 1. Pod is not ready
+         * OR
+         * 2. A new restart was detected
+         */
+        const newRestarts = getNewRestartCount(
+            podName,
+            targetPod.restartCount
+        );
+
+        const unsafeToRestart =
+            targetPod.ready === true &&
+            newRestarts === 0;
+
+        if (unsafeToRestart) {
             return res.status(409).json({
-                error: "Pod does not meet restart safety criteria",
-                pod: targetPod
+                error: "Pod is healthy and no new restart was detected",
+                pod: targetPod,
+                newRestarts
             });
         }
 
-        const result = await restartPod(pod);
+        const result = await restartPod(podName);
 
         res.json({
-            message: "Self-healing remediation executed",
-            result
+            timestamp: new Date().toISOString(),
+            remediation: result,
+            pod: {
+                name: podName,
+                ready: targetPod.ready,
+                restartCount: targetPod.restartCount,
+                newRestarts
+            }
         });
 
     } catch (error) {

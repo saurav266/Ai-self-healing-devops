@@ -190,11 +190,9 @@ export async function rollbackToPreviousVersion() {
 
     return {
         status: "ROLLBACK_REQUESTED",
-        previousRevision:
-            previous.revision,
-        previousImage:
-            previous.image,
-        result
+            previousRevision,
+            previousImage,
+            result
     };
 }
 export async function previewRollback() {

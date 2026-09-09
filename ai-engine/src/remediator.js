@@ -1,9 +1,9 @@
 import {
     getPodHealth,
     restartPod,
-    waitForRecovery
+    waitForRecovery,
+    waitForRollbackRecovery
 } from "./kubernetes.js";
-
 import {
     rollbackToPreviousVersion
 } from "./gitops.js";
@@ -143,20 +143,62 @@ export async function remediate(podName, action) {
     // 9. Roll back to previous deployment version
     // --------------------------------------------------
 
-    const rollback =
-        await rollbackToPreviousVersion();
+   const rollback =
+    await rollbackToPreviousVersion();
 
-    console.log(
-        "[AI REMEDIATOR] Rollback result:",
-        rollback
-    );
+console.log(
+    "[AI REMEDIATOR] Rollback result:",
+    rollback
+);
 
+if (
+    rollback.status !== "ROLLBACK_REQUESTED" ||
+    !rollback.previousImage
+) {
     return {
-        status: "ROLLBACK_REQUESTED",
+        status: "ROLLBACK_FAILED",
         pod: podName,
         action: "RESTART_THEN_ROLLBACK",
         result,
         recovery,
         rollback
     };
+}
+
+console.log(
+    `[AI REMEDIATOR] Waiting for Kubernetes to recover with ${rollback.previousImage}`
+);
+
+        const rollbackRecovery =
+            await waitForRollbackRecovery({
+                expectedImage:
+                    rollback.previousImage,
+                timeoutMs: 120000,
+                intervalMs: 5000
+            });
+
+        console.log(
+            "[AI REMEDIATOR] Rollback recovery:",
+            rollbackRecovery
+        );
+
+        return {
+            status:
+                rollbackRecovery.status ===
+                "ROLLBACK_RECOVERED"
+                    ? "ROLLBACK_RECOVERED"
+                    : "ROLLBACK_FAILED",
+
+            pod: podName,
+
+            action: "RESTART_THEN_ROLLBACK",
+
+            result,
+
+            recovery,
+
+            rollback,
+
+            rollbackRecovery
+        };
 }

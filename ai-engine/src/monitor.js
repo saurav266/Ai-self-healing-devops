@@ -26,17 +26,20 @@ export async function runMonitorCycle() {
 
         for (const item of analysis.pods) {
             console.log(
-                `[AI MONITOR] ` +
-                `pod=${item.pod} ` +
-                `cpu=${item.cpu}% ` +
-                `ready=${item.ready} ` +
-                `restarts=${item.restartCount} ` +
-                `newRestarts=${item.newRestarts} ` +
-                `errorRate=${item.errorRate}% ` +
-                `score=${item.incident.score} ` +
-                `severity=${item.incident.severity} ` +
-                `action=${item.decision.action}`
-            );
+            `[AI MONITOR] ` +
+            `pod=${item.pod} ` +
+            `cpu=${item.cpu}% ` +
+            `ready=${item.ready} ` +
+            `phase=${item.phase} ` +
+            `state=${item.state} ` +
+            `reason=${item.reason || "NONE"} ` +
+            `restarts=${item.restartCount} ` +
+            `newRestarts=${item.newRestarts} ` +
+            `errorRate=${item.errorRate}% ` +
+            `score=${item.incident.score} ` +
+            `severity=${item.incident.severity} ` +
+            `action=${item.decision.action}`
+        );
 
             if (item.decision.action === "RESTART") {
                 console.log(

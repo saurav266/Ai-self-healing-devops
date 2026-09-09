@@ -47,19 +47,46 @@ export async function analyzeSystem() {
         pods.map((pod) => pod.pod)
     );
 
-    const analysis = cpuResults.map((item) => {
+    /*
+     * Build a CPU lookup table.
+     *
+     * Some unhealthy pods may not have
+     * Prometheus CPU metrics.
+     */
+    const cpuByPod = new Map();
+
+    for (const item of cpuResults) {
         const podName =
-            item.metric?.pod || "unknown";
+            item.metric?.pod;
+
+        if (!podName) {
+            continue;
+        }
 
         const cpu =
             Number(item.value?.[1] || 0);
 
-        const pod = pods.find(
-            (p) => p.pod === podName
+        cpuByPod.set(
+            podName,
+            cpu
         );
+    }
+
+    /*
+     * Analyze ALL Kubernetes pods.
+     *
+     * This is important because a pod in
+     * ImagePullBackOff or CrashLoopBackOff
+     * may not have a CPU metric.
+     */
+    const analysis = pods.map((pod) => {
+        const podName = pod.pod;
+
+        const cpu =
+            cpuByPod.get(podName) || 0;
 
         const restartCount =
-            pod?.restartCount || 0;
+            pod.restartCount || 0;
 
         const newRestarts =
             getNewRestartCount(
@@ -68,7 +95,7 @@ export async function analyzeSystem() {
             );
 
         const podReady =
-            pod?.ready ?? false;
+            pod.ready ?? false;
 
         const incident =
             calculateIncidentScore({
@@ -89,25 +116,58 @@ export async function analyzeSystem() {
                 cpu,
                 restartCount,
                 newRestarts,
+
                 hpaCurrentReplicas:
                     hpa.currentReplicas,
+
                 hpaDesiredReplicas:
                     hpa.desiredReplicas,
+
                 hpaMaxReplicas:
                     hpa.maxReplicas,
-                podReady
+
+                podReady,
+
+                phase:
+                    pod.phase,
+
+                state:
+                    pod.state,
+
+                reason:
+                    pod.reason,
+
+                errorRate,
+
+                incidentScore:
+                    incident.score
             });
 
         return {
             pod: podName,
-            cpu: Number(cpu.toFixed(2)),
+
+            cpu: Number(
+                cpu.toFixed(2)
+            ),
+
             ready: podReady,
+
             restartCount,
+
             newRestarts,
+
+            phase: pod.phase,
+
+            state: pod.state,
+
+            reason: pod.reason,
+
             errorRate: Number(
                 errorRate.toFixed(2)
             ),
+
             incident,
+
             decision
         };
     });
@@ -115,10 +175,13 @@ export async function analyzeSystem() {
     return {
         timestamp:
             new Date().toISOString(),
+
         hpa,
+
         errorRate: Number(
             errorRate.toFixed(2)
         ),
+
         pods: analysis
     };
 }

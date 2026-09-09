@@ -19,22 +19,46 @@ export async function getPodHealth() {
     });
 
     return response.items.map((pod) => {
-        const containerStatuses = pod.status?.containerStatuses || [];
+        const containerStatuses =
+            pod.status?.containerStatuses || [];
 
-        const restartCount = containerStatuses.reduce(
-            (total, container) => total + (container.restartCount || 0),
-            0
-        );
+        const restartCount =
+            containerStatuses.reduce(
+                (total, container) =>
+                    total + (container.restartCount || 0),
+                0
+            );
 
-        const ready = containerStatuses.some(
-            (container) => container.ready === true
-        );
+        const ready =
+            containerStatuses.some(
+                (container) => container.ready === true
+            );
+
+        const containerState =
+            containerStatuses[0]?.state || {};
+
+        let state = "UNKNOWN";
+        let reason = "";
+
+        if (containerState.running) {
+            state = "RUNNING";
+        } else if (containerState.waiting) {
+            state = "WAITING";
+            reason =
+                containerState.waiting.reason || "";
+        } else if (containerState.terminated) {
+            state = "TERMINATED";
+            reason =
+                containerState.terminated.reason || "";
+        }
 
         return {
             pod: pod.metadata?.name,
             ready,
             restartCount,
-            phase: pod.status?.phase || "Unknown"
+            phase: pod.status?.phase || "Unknown",
+            state,
+            reason
         };
     });
 }
@@ -354,5 +378,92 @@ export async function waitForDeploymentRecovery({
 
         desiredReplicas:
             finalStatus.desiredReplicas
+    };
+}
+export async function waitForRollbackRecovery({
+    expectedImage,
+    timeoutMs = 120000,
+    intervalMs = 5000
+} = {}) {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeoutMs) {
+        try {
+            const deployment =
+                await appsApi.readNamespacedDeployment({
+                    name: DEPLOYMENT,
+                    namespace: NAMESPACE
+                });
+
+            const currentImage =
+                deployment.spec?.template?.spec?.containers?.[0]?.image;
+
+            const desiredReplicas =
+                deployment.spec?.replicas || 0;
+
+            const readyReplicas =
+                deployment.status?.readyReplicas || 0;
+
+            const availableReplicas =
+                deployment.status?.availableReplicas || 0;
+
+            const imageRecovered =
+                currentImage === expectedImage;
+
+            const replicasRecovered =
+                readyReplicas >= desiredReplicas &&
+                availableReplicas >= desiredReplicas;
+
+            if (
+                imageRecovered &&
+                replicasRecovered
+            ) {
+                return {
+                    status: "ROLLBACK_RECOVERED",
+
+                    image: currentImage,
+
+                    readyReplicas,
+
+                    availableReplicas,
+
+                    desiredReplicas,
+
+                    recoveryTimeSeconds:
+                        Number(
+                            (
+                                (Date.now() - startTime) /
+                                1000
+                            ).toFixed(2)
+                        )
+                };
+            }
+        } catch (error) {
+            console.log(
+                `[AI ROLLBACK] Waiting for Kubernetes: ${error.message}`
+            );
+        }
+
+        await new Promise(
+            resolve =>
+                setTimeout(
+                    resolve,
+                    intervalMs
+                )
+        );
+    }
+
+    return {
+        status: "ROLLBACK_TIMEOUT",
+
+        expectedImage,
+
+        recoveryTimeSeconds:
+            Number(
+                (
+                    (Date.now() - startTime) /
+                    1000
+                ).toFixed(2)
+            )
     };
 }

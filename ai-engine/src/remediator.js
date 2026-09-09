@@ -4,9 +4,15 @@ import {
     waitForRecovery,
     waitForRollbackRecovery
 } from "./kubernetes.js";
+
 import {
     rollbackToPreviousVersion
 } from "./gitops.js";
+
+import {
+    startRollback,
+    finishRollback
+} from "./state.js";
 
 const COOLDOWN_MS = Number(
     process.env.REMEDIATION_COOLDOWN_MS || 60000
@@ -142,32 +148,57 @@ export async function remediate(podName, action) {
     // --------------------------------------------------
     // 9. Roll back to previous deployment version
     // --------------------------------------------------
+    const rollbackPreview =
+        await rollbackToPreviousVersion();
 
-   const rollback =
-    await rollbackToPreviousVersion();
+    if (
+        !rollbackPreview.previousImage
+    ) {
+        return {
+            status: "ROLLBACK_FAILED",
+            pod: podName,
+            action: "RESTART_THEN_ROLLBACK",
+            result,
+            recovery,
+            rollback: rollbackPreview
+        };
+    }
 
-console.log(
-    "[AI REMEDIATOR] Rollback result:",
-    rollback
-);
+    const rollbackAllowed =
+        startRollback(
+            rollbackPreview.previousImage
+        );
 
-if (
-    rollback.status !== "ROLLBACK_REQUESTED" ||
-    !rollback.previousImage
-) {
-    return {
-        status: "ROLLBACK_FAILED",
-        pod: podName,
-        action: "RESTART_THEN_ROLLBACK",
-        result,
-        recovery,
-        rollback
-    };
-}
+    if (!rollbackAllowed) {
+        console.log(
+            `[AI REMEDIATOR] Rollback blocked to prevent rollback loop`
+        );
 
-console.log(
-    `[AI REMEDIATOR] Waiting for Kubernetes to recover with ${rollback.previousImage}`
-);
+        return {
+            status: "ROLLBACK_BLOCKED",
+            pod: podName,
+            action: "ESCALATE",
+            reason:
+                "Rollback already in progress or same image was already rolled back",
+            result,
+            recovery,
+            rollback: rollbackPreview
+        };
+    }
+
+    let rollback;
+
+    try {
+        rollback =
+            rollbackPreview;
+
+        console.log(
+            `[AI REMEDIATOR] Rollback target: ${rollback.previousImage}`
+        );
+
+        console.log(
+            `[AI REMEDIATOR] Waiting for Kubernetes rollback recovery`
+        );
 
         const rollbackRecovery =
             await waitForRollbackRecovery({
@@ -201,4 +232,7 @@ console.log(
 
             rollbackRecovery
         };
+    } finally {
+        finishRollback();
+    }
 }

@@ -4,6 +4,10 @@ import {
     waitForRecovery
 } from "./kubernetes.js";
 
+import {
+    rollbackToPreviousVersion
+} from "./gitops.js";
+
 const COOLDOWN_MS = Number(
     process.env.REMEDIATION_COOLDOWN_MS || 60000
 );
@@ -22,9 +26,10 @@ export async function remediate(podName, action) {
         };
     }
 
-    /*
-     * Cooldown protection
-     */
+    // --------------------------------------------------
+    // 1. Cooldown protection
+    // --------------------------------------------------
+
     const lastAction = lastRemediation.get(podName);
 
     if (
@@ -44,9 +49,10 @@ export async function remediate(podName, action) {
         };
     }
 
-    /*
-     * Get current Kubernetes state
-     */
+    // --------------------------------------------------
+    // 2. Verify pod still exists
+    // --------------------------------------------------
+
     const pods = await getPodHealth();
 
     const pod = pods.find(
@@ -61,50 +67,96 @@ export async function remediate(podName, action) {
         };
     }
 
-    /*
-     * Safety check
-     */
-   if (pod.ready) {
-    return {
-        status: "SKIPPED",
-        pod: podName,
-        reason: "Pod is currently healthy"
-    };
-}
+    // --------------------------------------------------
+    // 3. Don't restart a healthy pod
+    // --------------------------------------------------
 
-    /*
-     * Record remediation time BEFORE
-     * calling Kubernetes.
-     */
+    if (pod.ready) {
+        return {
+            status: "SKIPPED",
+            pod: podName,
+            reason: "Pod is currently healthy"
+        };
+    }
+
+    // --------------------------------------------------
+    // 4. Record remediation time
+    // --------------------------------------------------
+
     lastRemediation.set(
         podName,
         Date.now()
     );
 
-const result = await restartPod(podName);
+    // --------------------------------------------------
+    // 5. Restart pod
+    // --------------------------------------------------
 
-console.log(
-    `[AI REMEDIATOR] Restart requested for ${podName}`
-);
+    const result = await restartPod(podName);
 
-const recovery =
-    await waitForRecovery({
-        removedPod: podName,
-        timeoutMs: 60000,
-        intervalMs: 5000
-    });
+    console.log(
+        `[AI REMEDIATOR] Restart requested for ${podName}`
+    );
 
-return {
-    status: recovery.status === "RECOVERED"
-        ? "RECOVERED"
-        : "RECOVERY_TIMEOUT",
+    // --------------------------------------------------
+    // 6. Wait for Kubernetes recovery
+    // --------------------------------------------------
 
-    pod: podName,
+    const recovery =
+        await waitForRecovery({
+            removedPod: podName,
+            timeoutMs: 60000,
+            intervalMs: 5000
+        });
 
-    action: "RESTART",
+    // --------------------------------------------------
+    // 7. Recovery successful
+    // --------------------------------------------------
 
-    result,
+    if (recovery.status === "RECOVERED") {
+        console.log(
+            `[AI REMEDIATOR] Recovery successful for ${podName}`
+        );
 
-    recovery
-};
+        return {
+            status: "RECOVERED",
+            pod: podName,
+            action: "RESTART",
+            result,
+            recovery
+        };
+    }
+
+    // --------------------------------------------------
+    // 8. Persistent failure detected
+    // --------------------------------------------------
+
+    console.log(
+        `[AI REMEDIATOR] Persistent failure detected for ${podName}`
+    );
+
+    console.log(
+        `[AI REMEDIATOR] Starting GitOps rollback`
+    );
+
+    // --------------------------------------------------
+    // 9. Roll back to previous deployment version
+    // --------------------------------------------------
+
+    const rollback =
+        await rollbackToPreviousVersion();
+
+    console.log(
+        "[AI REMEDIATOR] Rollback result:",
+        rollback
+    );
+
+    return {
+        status: "ROLLBACK_REQUESTED",
+        pod: podName,
+        action: "RESTART_THEN_ROLLBACK",
+        result,
+        recovery,
+        rollback
+    };
 }

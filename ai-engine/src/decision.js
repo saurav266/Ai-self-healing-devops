@@ -32,6 +32,17 @@ export function makeDecision({
     // --------------------------------------------------
 
     if (
+    !podReady &&
+    FAILURE_STATES.has(reason)
+) {
+    return {
+        action: "ANSIBLE_RESTART",
+        severity: "HIGH",
+        reason:
+            `Ansible remediation selected for Kubernetes failure: ${reason}`
+    };
+}
+    if (
         !podReady &&
         FAILURE_STATES.has(reason)
     ) {

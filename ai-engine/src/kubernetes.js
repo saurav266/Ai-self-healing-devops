@@ -314,37 +314,61 @@ export async function waitForDeploymentRecovery({
     timeoutMs = 120000,
     intervalMs = 5000
 } = {}) {
-
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeoutMs) {
+        try {
+            const response =
+                await appsApi.readNamespacedDeployment({
+                    name: DEPLOYMENT,
+                    namespace: NAMESPACE
+                });
 
-        const deployment =
-            await getDeploymentStatus();
+            const deployment = response;
 
-        const recovered =
-            deployment.readyReplicas >=
-                deployment.desiredReplicas &&
-            deployment.availableReplicas >=
-                deployment.desiredReplicas;
+            const desiredReplicas =
+                deployment.spec?.replicas || 0;
 
-        if (recovered) {
-            return {
-                status: "RECOVERED",
-                recoveryTimeSeconds:
-                    Number(
-                        (
-                            (Date.now() - startTime) /
-                            1000
-                        ).toFixed(2)
-                    ),
-                readyReplicas:
-                    deployment.readyReplicas,
-                availableReplicas:
-                    deployment.availableReplicas,
-                desiredReplicas:
-                    deployment.desiredReplicas
-            };
+            const readyReplicas =
+                deployment.status?.readyReplicas || 0;
+
+            const availableReplicas =
+                deployment.status?.availableReplicas || 0;
+
+            const updatedReplicas =
+                deployment.status?.updatedReplicas || 0;
+
+            const recovered =
+                readyReplicas >= desiredReplicas &&
+                availableReplicas >= desiredReplicas &&
+                updatedReplicas >= desiredReplicas;
+
+            if (recovered) {
+                return {
+                    status: "RECOVERED",
+
+                    desiredReplicas,
+
+                    readyReplicas,
+
+                    availableReplicas,
+
+                    updatedReplicas,
+
+                    recoveryTimeSeconds:
+                        Number(
+                            (
+                                (Date.now() - startTime) /
+                                1000
+                            ).toFixed(2)
+                        )
+                };
+            }
+
+        } catch (error) {
+            console.log(
+                `[AI RECOVERY] ${error.message}`
+            );
         }
 
         await new Promise(
@@ -356,11 +380,28 @@ export async function waitForDeploymentRecovery({
         );
     }
 
-    const finalStatus =
-        await getDeploymentStatus();
+    const response =
+        await appsApi.readNamespacedDeployment({
+            name: DEPLOYMENT,
+            namespace: NAMESPACE
+        });
+
+    const deployment = response;
 
     return {
         status: "TIMEOUT",
+
+        desiredReplicas:
+            deployment.spec?.replicas || 0,
+
+        readyReplicas:
+            deployment.status?.readyReplicas || 0,
+
+        availableReplicas:
+            deployment.status?.availableReplicas || 0,
+
+        updatedReplicas:
+            deployment.status?.updatedReplicas || 0,
 
         recoveryTimeSeconds:
             Number(
@@ -368,16 +409,7 @@ export async function waitForDeploymentRecovery({
                     (Date.now() - startTime) /
                     1000
                 ).toFixed(2)
-            ),
-
-        readyReplicas:
-            finalStatus.readyReplicas,
-
-        availableReplicas:
-            finalStatus.availableReplicas,
-
-        desiredReplicas:
-            finalStatus.desiredReplicas
+            )
     };
 }
 export async function waitForRollbackRecovery({

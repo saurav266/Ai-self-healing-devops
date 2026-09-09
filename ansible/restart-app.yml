@@ -1,0 +1,28 @@
+---
+- name: Restart Self Healing Application
+  hosts: local
+  gather_facts: false
+
+  vars:
+    namespace: self-healing
+    deployment: self-healing-node-app
+
+  tasks:
+
+    - name: Restart application deployment
+      command:
+        kubectl rollout restart deployment/{{ deployment }} -n {{ namespace }}
+      register: restart_result
+
+    - name: Wait for deployment rollout
+      command:
+        kubectl rollout status deployment/{{ deployment }} -n {{ namespace }} --timeout=120s
+      register: rollout_result
+
+    - name: Display restart result
+      debug:
+        var: restart_result.stdout
+
+    - name: Display rollout result
+      debug:
+        var: rollout_result.stdout

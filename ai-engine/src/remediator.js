@@ -1,8 +1,13 @@
+import { execFile } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
 import {
     getPodHealth,
     restartPod,
     waitForRecovery,
-    waitForRollbackRecovery
+    waitForRollbackRecovery,
+    waitForDeploymentRecovery
 } from "./kubernetes.js";
 
 import {
@@ -25,7 +30,10 @@ export async function remediate(podName, action) {
         throw new Error("Pod name is required");
     }
 
-    if (action !== "RESTART") {
+    if (
+        action !== "RESTART" &&
+        action !== "ANSIBLE_RESTART"
+    ) {
         return {
             status: "SKIPPED",
             reason: `Unsupported action: ${action}`
@@ -98,11 +106,39 @@ export async function remediate(podName, action) {
     // 5. Restart pod
     // --------------------------------------------------
 
-    const result = await restartPod(podName);
+    let result;
+if (action === "ANSIBLE_RESTART") {
+    console.log(
+        `[AI REMEDIATOR] Using Ansible remediation for ${podName}`
+    );
+
+    result = await runAnsibleRestart();
 
     console.log(
-        `[AI REMEDIATOR] Restart requested for ${podName}`
+        `[AI REMEDIATOR] Waiting for Ansible deployment recovery`
     );
+
+    const recovery =
+        await waitForDeploymentRecovery({
+            timeoutMs: 120000,
+            intervalMs: 5000
+        });
+
+    return {
+        status:
+            recovery.status === "RECOVERED"
+                ? "RECOVERED"
+                : "RECOVERY_TIMEOUT",
+
+        pod: podName,
+
+        action: "ANSIBLE_RESTART",
+
+        result,
+
+        recovery
+    };
+}
 
     // --------------------------------------------------
     // 6. Wait for Kubernetes recovery
@@ -235,4 +271,48 @@ export async function remediate(podName, action) {
     } finally {
         finishRollback();
     }
+}
+
+async function runAnsibleRestart() {
+    const projectDir =
+        process.env.PROJECT_DIR ||
+        "D:/Deveops_Project/Ai-self-healing-devops";
+
+    const command = "docker";
+
+    const args = [
+        "run",
+        "--rm",
+
+        "-v",
+        `${projectDir}/ansible:/ansible:ro`,
+
+        "-v",
+        `${process.env.USERPROFILE}/.kube:/root/.kube:ro`,
+
+        "self-healing-ansible:1.1",
+
+        "ansible-playbook",
+
+        "-i",
+        "/ansible/inventory.ini",
+
+        "/ansible/restart-app.yml"
+    ];
+
+    const { stdout, stderr } =
+        await execFileAsync(
+            command,
+            args,
+            {
+                windowsHide: true,
+                maxBuffer: 10 * 1024 * 1024
+            }
+        );
+
+    return {
+        status: "ANSIBLE_COMPLETED",
+        stdout,
+        stderr
+    };
 }

@@ -41,15 +41,19 @@ export async function runMonitorCycle() {
             `action=${item.decision.action}`
         );
 
-            if (item.decision.action === "RESTART") {
+            if (
+                item.decision.action === "RESTART" ||
+                item.decision.action === "ANSIBLE_RESTART"
+            ) {
                 console.log(
                     `[AI MONITOR] Remediation requested for ${item.pod}`
                 );
 
-                const result = await remediate(
-                    item.pod,
-                    "RESTART"
-                );
+                const result =
+                    await remediate(
+                        item.pod,
+                        item.decision.action
+                    );
 
                 console.log(
                     "[AI MONITOR] Remediation result:",

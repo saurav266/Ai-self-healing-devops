@@ -1,0 +1,33 @@
+---
+- name: Self Healing Diagnostics
+  hosts: local
+  gather_facts: false
+
+  tasks:
+
+    - name: Show Kubernetes nodes
+      command: kubectl get nodes
+      register: kubernetes_nodes
+      changed_when: false
+
+    - name: Display Kubernetes nodes
+      debug:
+        var: kubernetes_nodes.stdout
+
+    - name: Show application pods
+      command: kubectl get pods -n self-healing
+      register: application_pods
+      changed_when: false
+
+    - name: Display application pods
+      debug:
+        var: application_pods.stdout
+
+    - name: Show deployment status
+      command: kubectl get deployment self-healing-node-app -n self-healing
+      register: deployment_status
+      changed_when: false
+
+    - name: Display deployment status
+      debug:
+        var: deployment_status.stdout

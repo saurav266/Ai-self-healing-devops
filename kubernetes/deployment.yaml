@@ -23,7 +23,6 @@ spec:
         - name: node-app
 
           image: saurav8789/self-healing-node-app:12
-          command: ["/bin/sh", "-c", "exit 1"]
 
           imagePullPolicy: Always
 

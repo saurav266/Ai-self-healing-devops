@@ -126,8 +126,7 @@ lastRemediation.set(
     podName,
     Date.now()
 );
-
-try {
+    try {
 
     // --------------------------------------------------
     // 5. Ansible remediation
@@ -267,7 +266,7 @@ try {
         };
     }
 
-    try {
+        try {
         console.log(
             `[AI REMEDIATOR] Rollback target: ${previousImage}`
         );
@@ -288,10 +287,18 @@ try {
             rollbackRecovery
         );
 
+        const rollbackSucceeded =
+            rollbackRecovery.status ===
+            "ROLLBACK_RECOVERED";
+
+        finishRollback(
+            rollbackSucceeded,
+            previousImage
+        );
+
         return {
             status:
-                rollbackRecovery.status ===
-                "ROLLBACK_RECOVERED"
+                rollbackSucceeded
                     ? "ROLLBACK_RECOVERED"
                     : "ROLLBACK_FAILED",
 
@@ -308,8 +315,11 @@ try {
             rollbackRecovery
         };
 
-    } finally {
-        finishRollback();
+    } catch (error) {
+
+        finishRollback(false);
+
+        throw error;
     }
 
 } finally {

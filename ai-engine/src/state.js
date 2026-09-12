@@ -75,13 +75,21 @@ export function startRollback(image) {
     }
 
     rollbackInProgress = true;
-    lastRollbackImage = image;
 
     return true;
 }
 
-export function finishRollback() {
+export function finishRollback(success = false, image = null) {
     rollbackInProgress = false;
+
+    if (success && image) {
+        lastRollbackImage = image;
+    }
+}
+
+export function resetRollbackState() {
+    rollbackInProgress = false;
+    lastRollbackImage = null;
 }
 
 export function getLastRollbackImage() {

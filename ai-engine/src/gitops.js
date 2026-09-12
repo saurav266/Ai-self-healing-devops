@@ -193,15 +193,25 @@ export async function rollbackToPreviousVersion() {
         };
     }
 
+    const currentManifest =
+        await fs.readFile(
+            `${REPO_DIR}/${MANIFEST}`,
+            "utf8"
+        );
+
     for (const commit of commits.slice(1)) {
+
         const result =
             await runGit([
                 "show",
                 `${commit}:${MANIFEST}`
             ]);
 
+        const previousManifest =
+            result.stdout;
+
         const match =
-            result.stdout.match(
+            previousManifest.match(
                 /image:\s*(saurav8789\/self-healing-node-app:\S+)/
             );
 
@@ -213,29 +223,76 @@ export async function rollbackToPreviousVersion() {
             match[1];
 
         if (
-            previousImage === currentImage
+            previousManifest ===
+            currentManifest
         ) {
             continue;
         }
 
-        const tag =
-            previousImage.split(":").pop();
+        await fs.writeFile(
+            `${REPO_DIR}/${MANIFEST}`,
+            previousManifest,
+            "utf8"
+        );
 
-        const rollbackResult =
-            await rollbackGitOpsImage(tag);
+        await runGit([
+            "add",
+            MANIFEST
+        ]);
+
+        const diff =
+            await runGit([
+                "diff",
+                "--cached",
+                "--",
+                MANIFEST
+            ]);
+
+        if (!diff.stdout) {
+            return {
+                status: "SKIPPED",
+                reason:
+                    "No GitOps manifest changes detected"
+            };
+        }
+
+        await runGit([
+            "config",
+            "user.name",
+            "saurav266"
+        ]);
+
+        await runGit([
+            "config",
+            "user.email",
+            "saurav840963@gmail.com"
+        ]);
+
+        await runGit([
+            "commit",
+            "-m",
+            `Rollback application to ${previousImage}`
+        ]);
+
+        await runGit([
+            "push",
+            "origin",
+            "main"
+        ]);
 
         return {
             status: "ROLLBACK_REQUESTED",
             previousRevision: commit,
+            currentImage,
             previousImage,
-            result: rollbackResult
+            restoredManifest: true
         };
     }
 
     return {
         status: "SKIPPED",
         reason:
-            "No previous different GitOps image found"
+            "No previous different GitOps manifest found"
     };
 }
 export async function previewRollback() {

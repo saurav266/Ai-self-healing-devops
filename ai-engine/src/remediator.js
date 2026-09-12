@@ -16,7 +16,10 @@ import {
 
 import {
     startRollback,
-    finishRollback
+    finishRollback,
+    isRemediationInProgress,
+    startRemediation,
+    finishRemediation
 } from "./state.js";
 
 const COOLDOWN_MS = Number(
@@ -85,68 +88,96 @@ export async function remediate(podName, action) {
     // 3. Don't restart a healthy pod
     // --------------------------------------------------
 
-   const allowHealthyTest =
-    process.env.AI_TEST_MODE === "true";
+   
 
-if (pod.ready && !allowHealthyTest) {
+if (pod.ready ) {
     return {
         status: "SKIPPED",
         pod: podName,
         reason: "Pod is currently healthy"
     };
 }
+if (isRemediationInProgress(podName)) {
+    return {
+        status: "SKIPPED",
+        pod: podName,
+        reason: "Remediation already in progress"
+    };
+}
+
+if (!startRemediation(podName)) {
+    return {
+        status: "SKIPPED",
+        pod: podName,
+        reason: "Unable to acquire remediation lock"
+    };
+}
+
 
     // --------------------------------------------------
     // 4. Record remediation time
     // --------------------------------------------------
 
-    lastRemediation.set(
-        podName,
-        Date.now()
-    );
+    // --------------------------------------------------
+// 4. Record remediation time
+// --------------------------------------------------
+
+lastRemediation.set(
+    podName,
+    Date.now()
+);
+
+try {
 
     // --------------------------------------------------
-    // 5. Restart pod
+    // 5. Ansible remediation
     // --------------------------------------------------
 
-    let result;
-if (action === "ANSIBLE_RESTART") {
-    console.log(
-        `[AI REMEDIATOR] Using Ansible remediation for ${podName}`
-    );
+    if (action === "ANSIBLE_RESTART") {
+        console.log(
+            `[AI REMEDIATOR] Using Ansible remediation for ${podName}`
+        );
 
-    result = await runAnsibleRestart();
+        const result =
+            await runAnsibleRestart();
 
-    console.log(
-        `[AI REMEDIATOR] Waiting for Ansible deployment recovery`
-    );
+        console.log(
+            `[AI REMEDIATOR] Waiting for Ansible deployment recovery`
+        );
 
-    const recovery =
-        await waitForDeploymentRecovery({
-            timeoutMs: 120000,
-            intervalMs: 5000
-        });
+        const recovery =
+            await waitForDeploymentRecovery({
+                timeoutMs: 120000,
+                intervalMs: 5000
+            });
 
-    return {
-        status:
-            recovery.status === "RECOVERED"
-                ? "RECOVERED"
-                : "RECOVERY_TIMEOUT",
+        return {
+            status:
+                recovery.status === "RECOVERED"
+                    ? "RECOVERED"
+                    : "RECOVERY_TIMEOUT",
 
-        pod: podName,
+            pod: podName,
 
-        action: "ANSIBLE_RESTART",
+            action: "ANSIBLE_RESTART",
 
-        result,
+            result,
 
-        recovery
-    };
-}
+            recovery
+        };
+    }
 
     // --------------------------------------------------
-    // 6. Wait for Kubernetes recovery
+    // 6. Normal pod restart
     // --------------------------------------------------
-result = await restartPod(podName);
+
+    const result =
+        await restartPod(podName);
+
+    // --------------------------------------------------
+    // 7. Wait for Kubernetes recovery
+    // --------------------------------------------------
+
     const recovery =
         await waitForRecovery({
             removedPod: podName,
@@ -155,7 +186,7 @@ result = await restartPod(podName);
         });
 
     // --------------------------------------------------
-    // 7. Recovery successful
+    // 8. Recovery successful
     // --------------------------------------------------
 
     if (recovery.status === "RECOVERED") {
@@ -173,123 +204,119 @@ result = await restartPod(podName);
     }
 
     // --------------------------------------------------
-    // 8. Persistent failure detected
-    // --------------------------------------------------
-
-    // --------------------------------------------------
-// 8. Persistent failure detected
-// --------------------------------------------------
-
-console.log(
-    `[AI REMEDIATOR] Persistent failure detected for ${podName}`
-);
-
-console.log(
-    `[AI REMEDIATOR] Starting GitOps rollback`
-);
-
-// --------------------------------------------------
-// 9. Protect against rollback loops
-// --------------------------------------------------
-
-const rollbackPreview =
-    await rollbackToPreviousVersion();
-
-if (
-    rollbackPreview.status !==
-    "ROLLBACK_REQUESTED"
-) {
-    return {
-        status: "ROLLBACK_FAILED",
-        pod: podName,
-        action: "RESTART_THEN_ROLLBACK",
-        result,
-        recovery,
-        rollback: rollbackPreview
-    };
-}
-
-const previousImage =
-    rollbackPreview.previousImage;
-
-if (!previousImage) {
-    return {
-        status: "ROLLBACK_FAILED",
-        pod: podName,
-        action: "RESTART_THEN_ROLLBACK",
-        result,
-        recovery,
-        rollback: rollbackPreview,
-        reason: "Previous image was not found"
-    };
-}
-
-const rollbackAllowed =
-    startRollback(previousImage);
-
-if (!rollbackAllowed) {
-    console.log(
-        `[AI REMEDIATOR] Rollback blocked to prevent rollback loop`
-    );
-
-    return {
-        status: "ROLLBACK_BLOCKED",
-        pod: podName,
-        action: "ESCALATE",
-        reason:
-            "Rollback already in progress or same image was already rolled back",
-        result,
-        recovery,
-        rollback: rollbackPreview
-    };
-}
-
-try {
-    console.log(
-        `[AI REMEDIATOR] Rollback target: ${previousImage}`
-    );
-
-    // --------------------------------------------------
-    // 10. Wait for Argo CD → Kubernetes synchronization
+    // 9. Persistent failure
     // --------------------------------------------------
 
     console.log(
-        `[AI REMEDIATOR] Waiting for Kubernetes rollback recovery`
+        `[AI REMEDIATOR] Persistent failure detected for ${podName}`
     );
-
-    const rollbackRecovery =
-        await waitForRollbackRecovery({
-            expectedImage: previousImage,
-            timeoutMs: 120000,
-            intervalMs: 5000
-        });
 
     console.log(
-        "[AI REMEDIATOR] Rollback recovery:",
-        rollbackRecovery
+        `[AI REMEDIATOR] Starting GitOps rollback`
     );
 
-    return {
-        status:
-            rollbackRecovery.status === "ROLLBACK_RECOVERED"
-                ? "ROLLBACK_RECOVERED"
-                : "ROLLBACK_FAILED",
+    const rollbackPreview =
+        await rollbackToPreviousVersion();
 
-        pod: podName,
+    if (
+        rollbackPreview.status !==
+        "ROLLBACK_REQUESTED"
+    ) {
+        return {
+            status: "ROLLBACK_FAILED",
+            pod: podName,
+            action: "RESTART_THEN_ROLLBACK",
+            result,
+            recovery,
+            rollback: rollbackPreview
+        };
+    }
 
-        action: "RESTART_THEN_ROLLBACK",
+    const previousImage =
+        rollbackPreview.previousImage;
 
-        result,
+    if (!previousImage) {
+        return {
+            status: "ROLLBACK_FAILED",
+            pod: podName,
+            action: "RESTART_THEN_ROLLBACK",
+            result,
+            recovery,
+            rollback: rollbackPreview,
+            reason: "Previous image was not found"
+        };
+    }
 
-        recovery,
+    const rollbackAllowed =
+        startRollback(previousImage);
 
-        rollback: rollbackPreview,
+    if (!rollbackAllowed) {
+        console.log(
+            `[AI REMEDIATOR] Rollback blocked to prevent rollback loop`
+        );
 
-        rollbackRecovery
-    };
+        return {
+            status: "ROLLBACK_BLOCKED",
+            pod: podName,
+            action: "ESCALATE",
+            reason:
+                "Rollback already in progress or same image was already rolled back",
+            result,
+            recovery,
+            rollback: rollbackPreview
+        };
+    }
+
+    try {
+        console.log(
+            `[AI REMEDIATOR] Rollback target: ${previousImage}`
+        );
+
+        console.log(
+            `[AI REMEDIATOR] Waiting for Kubernetes rollback recovery`
+        );
+
+        const rollbackRecovery =
+            await waitForRollbackRecovery({
+                expectedImage: previousImage,
+                timeoutMs: 120000,
+                intervalMs: 5000
+            });
+
+        console.log(
+            "[AI REMEDIATOR] Rollback recovery:",
+            rollbackRecovery
+        );
+
+        return {
+            status:
+                rollbackRecovery.status ===
+                "ROLLBACK_RECOVERED"
+                    ? "ROLLBACK_RECOVERED"
+                    : "ROLLBACK_FAILED",
+
+            pod: podName,
+
+            action: "RESTART_THEN_ROLLBACK",
+
+            result,
+
+            recovery,
+
+            rollback: rollbackPreview,
+
+            rollbackRecovery
+        };
+
+    } finally {
+        finishRollback();
+    }
 
 } finally {
-    finishRollback();
+
+    // Always release the remediation lock
+    finishRemediation(podName);
+
 }
 }
 
@@ -310,7 +337,7 @@ async function runAnsibleRestart() {
         "-v",
         `${process.env.USERPROFILE}/.kube:/root/.kube:ro`,
 
-        "self-healing-ansible:1.1",
+        "self-healing-ansible:1.2",
 
         "ansible-playbook",
 

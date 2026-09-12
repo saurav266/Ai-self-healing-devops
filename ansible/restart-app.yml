@@ -8,10 +8,9 @@
     deployment: self-healing-node-app
 
   tasks:
-
     - name: Restart application deployment
       command:
-       kubectl rollout restart deployment/{{ deployment }} -n {{ k8s_namespace }}
+        kubectl rollout restart deployment/{{ deployment }} -n {{ k8s_namespace }}
       register: restart_result
 
     - name: Wait for deployment rollout

@@ -1,7 +1,8 @@
 const previousRestartCounts = new Map();
 
-let rollbackInProgress = false;
+const activeRemediations = new Set();
 
+let rollbackInProgress = false;
 let lastRollbackImage = null;
 
 export function getNewRestartCount(
@@ -27,13 +28,34 @@ export function clearPodState(existingPods) {
     const activePods =
         new Set(existingPods);
 
-    for (
-        const pod of previousRestartCounts.keys()
-    ) {
+    for (const pod of previousRestartCounts.keys()) {
         if (!activePods.has(pod)) {
             previousRestartCounts.delete(pod);
         }
     }
+
+    for (const pod of activeRemediations) {
+        if (!activePods.has(pod)) {
+            activeRemediations.delete(pod);
+        }
+    }
+}
+
+export function isRemediationInProgress(pod) {
+    return activeRemediations.has(pod);
+}
+
+export function startRemediation(pod) {
+    if (activeRemediations.has(pod)) {
+        return false;
+    }
+
+    activeRemediations.add(pod);
+    return true;
+}
+
+export function finishRemediation(pod) {
+    activeRemediations.delete(pod);
 }
 
 export function isRollbackInProgress() {

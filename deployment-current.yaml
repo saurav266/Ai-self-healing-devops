@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    argocd.argoproj.io/tracking-id: self-healing-node-app:apps/Deployment:self-healing/self-healing-node-app
+    deployment.kubernetes.io/revision: "12"
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"apps/v1","kind":"Deployment","metadata":{"annotations":{"argocd.argoproj.io/tracking-id":"self-healing-node-app:apps/Deployment:self-healing/self-healing-node-app"},"labels":{"app":"self-healing-node-app"},"name":"self-healing-node-app","namespace":"self-healing"},"spec":{"replicas":3,"selector":{"matchLabels":{"app":"self-healing-node-app"}},"template":{"metadata":{"labels":{"app":"self-healing-node-app"}},"spec":{"containers":[{"image":"saurav8789/self-healing-node-app:12","imagePullPolicy":"Always","livenessProbe":{"failureThreshold":3,"httpGet":{"path":"/health","port":"http"},"initialDelaySeconds":10,"periodSeconds":10,"timeoutSeconds":3},"name":"node-app","ports":[{"containerPort":3000,"name":"http"}],"readinessProbe":{"failureThreshold":3,"httpGet":{"path":"/ready","port":"http"},"initialDelaySeconds":5,"periodSeconds":5,"timeoutSeconds":3},"resources":{"limits":{"cpu":"500m","memory":"512Mi"},"requests":{"cpu":"100m","memory":"128Mi"}}}]}}}}
+  creationTimestamp: "2026-08-29T09:48:26Z"
+  generation: 37
+  labels:
+    app: self-healing-node-app
+  name: self-healing-node-app
+  namespace: self-healing
+  resourceVersion: "105423"
+  uid: 672f1db8-3250-4186-864d-18908d5af8e6
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 3
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: self-healing-node-app
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2026-09-12T12:15:10Z"
+      labels:
+        app: self-healing-node-app
+    spec:
+      containers:
+      - image: saurav8789/self-healing-node-app:12
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 3
+        name: node-app
+        ports:
+        - containerPort: 3000
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /ready
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 3
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+status:
+  availableReplicas: 3
+  conditions:
+  - lastTransitionTime: "2026-08-29T09:48:26Z"
+    lastUpdateTime: "2026-09-12T12:15:54Z"
+    message: ReplicaSet "self-healing-node-app-58447dc67b" has successfully progressed.
+    reason: NewReplicaSetAvailable
+    status: "True"
+    type: Progressing
+  - lastTransitionTime: "2026-09-12T12:24:53Z"
+    lastUpdateTime: "2026-09-12T12:24:53Z"
+    message: Deployment has minimum availability.
+    reason: MinimumReplicasAvailable
+    status: "True"
+    type: Available
+  observedGeneration: 37
+  readyReplicas: 3
+  replicas: 3
+  updatedReplicas: 3

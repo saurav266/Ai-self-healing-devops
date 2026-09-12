@@ -4,19 +4,19 @@
   gather_facts: false
 
   vars:
-    namespace: self-healing
+    k8s_namespace: self-healing
     deployment: self-healing-node-app
 
   tasks:
 
     - name: Restart application deployment
       command:
-        kubectl rollout restart deployment/{{ deployment }} -n {{ namespace }}
+       kubectl rollout restart deployment/{{ deployment }} -n {{ k8s_namespace }}
       register: restart_result
 
     - name: Wait for deployment rollout
       command:
-        kubectl rollout status deployment/{{ deployment }} -n {{ namespace }} --timeout=120s
+        kubectl rollout status deployment/{{ deployment }} -n {{ k8s_namespace }} --timeout=120s
       register: rollout_result
 
     - name: Display restart result

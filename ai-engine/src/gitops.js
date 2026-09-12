@@ -168,31 +168,74 @@ export async function rollbackGitOpsImage(
 }
 
 export async function rollbackToPreviousVersion() {
+    const currentImage =
+        await getGitOpsImage();
 
-    const previous =
-        await getPreviousDeploymentRevision();
+    const log =
+        await runGit([
+            "log",
+            "--format=%H",
+            "--",
+            MANIFEST
+        ]);
 
-    if (!previous) {
+    const commits =
+        log.stdout
+            .split(/\r?\n/)
+            .map((commit) => commit.trim())
+            .filter(Boolean);
+
+    if (commits.length < 2) {
         return {
             status: "SKIPPED",
-            reason: "No previous deployment revision found"
+            reason:
+                "No previous GitOps commit found"
         };
     }
 
-    const image =
-        previous.image;
+    for (const commit of commits.slice(1)) {
+        const result =
+            await runGit([
+                "show",
+                `${commit}:${MANIFEST}`
+            ]);
 
-    const tag =
-        image.split(":").pop();
+        const match =
+            result.stdout.match(
+                /image:\s*(saurav8789\/self-healing-node-app:\S+)/
+            );
 
-    const result =
-        await rollbackGitOpsImage(tag);
+        if (!match) {
+            continue;
+        }
+
+        const previousImage =
+            match[1];
+
+        if (
+            previousImage === currentImage
+        ) {
+            continue;
+        }
+
+        const tag =
+            previousImage.split(":").pop();
+
+        const rollbackResult =
+            await rollbackGitOpsImage(tag);
+
+        return {
+            status: "ROLLBACK_REQUESTED",
+            previousRevision: commit,
+            previousImage,
+            result: rollbackResult
+        };
+    }
 
     return {
-        status: "ROLLBACK_REQUESTED",
-            previousRevision,
-            previousImage,
-            result
+        status: "SKIPPED",
+        reason:
+            "No previous different GitOps image found"
     };
 }
 export async function previewRollback() {

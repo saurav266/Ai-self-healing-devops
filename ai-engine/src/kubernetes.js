@@ -414,7 +414,7 @@ export async function waitForDeploymentRecovery({
 }
 export async function waitForRollbackRecovery({
     expectedImage,
-    timeoutMs = 120000,
+    timeoutMs = 180000,
     intervalMs = 5000
 } = {}) {
     const startTime = Date.now();

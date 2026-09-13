@@ -21,10 +21,7 @@ spec:
     spec:
       containers:
         - name: node-app
-          command:
-          - /bin/sh
-          - -c
-          - exit 1
+
           image: saurav8789/self-healing-node-app:12
           
 

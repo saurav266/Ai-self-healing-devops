@@ -311,7 +311,7 @@ export async function getPreviousDeploymentRevision() {
     return previous || null;
 }
 export async function waitForDeploymentRecovery({
-    timeoutMs = 120000,
+    timeoutMs = 180000,
     intervalMs = 5000
 } = {}) {
     const startTime = Date.now();

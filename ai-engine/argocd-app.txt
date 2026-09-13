@@ -1,0 +1,226 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  creationTimestamp: "2026-09-02T14:36:20Z"
+  generation: 413
+  name: self-healing-node-app
+  namespace: argocd
+  resourceVersion: "118260"
+  uid: b2bc20e4-1e57-4a9a-b958-f7383417a17e
+spec:
+  destination:
+    namespace: self-healing
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: kubernetes
+    repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+    targetRevision: main
+  syncPolicy:
+    automated:
+      enabled: true
+      prune: true
+      selfHeal: true
+status:
+  controllerNamespace: argocd
+  health:
+    lastTransitionTime: "2026-09-12T14:20:58Z"
+    status: Progressing
+  history:
+  - deployStartedAt: "2026-09-02T14:40:26Z"
+    deployedAt: "2026-09-02T14:40:30Z"
+    id: 0
+    initiatedBy:
+      username: admin
+    revision: 02240194ddde8ef01de31a22d883f55760471cea
+    source:
+      path: kubernetes
+      repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+      targetRevision: main
+  - deployStartedAt: "2026-09-02T15:13:01Z"
+    deployedAt: "2026-09-02T15:13:04Z"
+    id: 1
+    initiatedBy:
+      automated: true
+    revision: a4e90f10d2967f182e442f89f1f815d05839a91a
+    source:
+      path: kubernetes
+      repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+      targetRevision: main
+  - deployStartedAt: "2026-09-05T14:49:20Z"
+    deployedAt: "2026-09-05T14:49:23Z"
+    id: 2
+    initiatedBy:
+      automated: true
+    revision: 3763f250b1fdb7ad0ff2c0c7aa21665fb731e3b2
+    source:
+      path: kubernetes
+      repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+      targetRevision: main
+  - deployStartedAt: "2026-09-05T14:55:32Z"
+    deployedAt: "2026-09-05T14:55:34Z"
+    id: 3
+    initiatedBy:
+      automated: true
+    revision: f6e90e7a52b11fd270295f44b51fa170a3cc735d
+    source:
+      path: kubernetes
+      repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+      targetRevision: main
+  - deployStartedAt: "2026-09-09T12:48:25Z"
+    deployedAt: "2026-09-09T12:48:28Z"
+    id: 4
+    initiatedBy:
+      automated: true
+    revision: 40402722527cb953fb8062c28db242393db03e36
+    source:
+      path: kubernetes
+      repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+      targetRevision: main
+  - deployStartedAt: "2026-09-12T13:43:18Z"
+    deployedAt: "2026-09-12T13:43:20Z"
+    id: 5
+    initiatedBy:
+      automated: true
+    revision: 4064ed528ea319528245b4bd4366fed398bc277c
+    source:
+      path: kubernetes
+      repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+      targetRevision: main
+  - deployStartedAt: "2026-09-12T14:16:36Z"
+    deployedAt: "2026-09-12T14:16:39Z"
+    id: 6
+    initiatedBy:
+      automated: true
+    revision: 36e20be4cb1bb10319baf2a388b928d326174677
+    source:
+      path: kubernetes
+      repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+      targetRevision: main
+  - deployStartedAt: "2026-09-12T14:20:56Z"
+    deployedAt: "2026-09-12T14:20:58Z"
+    id: 7
+    initiatedBy:
+      automated: true
+    revision: 649a6d07f7f0b8bc3a76113b54b1e43454d8c295
+    source:
+      path: kubernetes
+      repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+      targetRevision: main
+  operationState:
+    finishedAt: "2026-09-12T14:20:58Z"
+    message: successfully synced (all tasks run)
+    operation:
+      initiatedBy:
+        automated: true
+      retry:
+        limit: 5
+      sync:
+        prune: true
+        revision: 649a6d07f7f0b8bc3a76113b54b1e43454d8c295
+        source:
+          path: kubernetes
+          repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+          targetRevision: main
+    phase: Succeeded
+    startedAt: "2026-09-12T14:20:56Z"
+    syncResult:
+      resources:
+      - group: ""
+        hookPhase: Running
+        kind: Namespace
+        message: namespace/self-healing unchanged
+        name: self-healing
+        namespace: self-healing
+        status: Synced
+        syncPhase: Sync
+        version: v1
+      - group: ""
+        hookPhase: Running
+        kind: Service
+        message: service/self-healing-node-service unchanged
+        name: self-healing-node-service
+        namespace: self-healing
+        status: Synced
+        syncPhase: Sync
+        version: v1
+      - group: apps
+        hookPhase: Running
+        images:
+        - saurav8789/self-healing-node-app:12
+        kind: Deployment
+        message: deployment.apps/self-healing-node-app configured
+        name: self-healing-node-app
+        namespace: self-healing
+        status: Synced
+        syncPhase: Sync
+        version: v1
+      - group: autoscaling
+        hookPhase: Running
+        kind: HorizontalPodAutoscaler
+        message: horizontalpodautoscaler.autoscaling/self-healing-node-hpa unchanged
+        name: self-healing-node-hpa
+        namespace: self-healing
+        status: Synced
+        syncPhase: Sync
+        version: v2
+      - group: monitoring.coreos.com
+        hookPhase: Running
+        kind: ServiceMonitor
+        message: servicemonitor.monitoring.coreos.com/self-healing-node-monitor unchanged
+        name: self-healing-node-monitor
+        namespace: self-healing
+        status: Synced
+        syncPhase: Sync
+        version: v1
+      revision: 649a6d07f7f0b8bc3a76113b54b1e43454d8c295
+      source:
+        path: kubernetes
+        repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+        targetRevision: main
+  reconciledAt: "2026-09-12T14:37:34Z"
+  resourceHealthSource: appTree
+  resources:
+  - kind: Namespace
+    name: self-healing
+    status: Synced
+    version: v1
+  - kind: Service
+    name: self-healing-node-service
+    namespace: self-healing
+    status: Synced
+    version: v1
+  - group: apps
+    kind: Deployment
+    name: self-healing-node-app
+    namespace: self-healing
+    status: Synced
+    version: v1
+  - group: autoscaling
+    kind: HorizontalPodAutoscaler
+    name: self-healing-node-hpa
+    namespace: self-healing
+    status: Synced
+    version: v2
+  - group: monitoring.coreos.com
+    kind: ServiceMonitor
+    name: self-healing-node-monitor
+    namespace: self-healing
+    status: Synced
+    version: v1
+  sourceHydrator: {}
+  sourceType: Directory
+  summary:
+    images:
+    - saurav8789/self-healing-node-app:12
+  sync:
+    comparedTo:
+      destination:
+        namespace: self-healing
+        server: https://kubernetes.default.svc
+      source:
+        path: kubernetes
+        repoURL: https://github.com/saurav266/Ai-self-healing-devops.git
+        targetRevision: main
+    revision: acae5c643de8e5ede5771620916ae65423d22054
+    status: Synced

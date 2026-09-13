@@ -23,7 +23,6 @@ spec:
         - name: node-app
 
           image: saurav8789/self-healing-node-app:12
-          
 
           imagePullPolicy: Always
 

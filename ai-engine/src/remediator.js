@@ -133,10 +133,11 @@ lastRemediation.set(
     // --------------------------------------------------
 
     if (action === "ANSIBLE_RESTART") {
-        console.log(
-            `[AI REMEDIATOR] Using Ansible remediation for ${podName}`
-        );
+    console.log(
+        `[AI REMEDIATOR] Using Ansible remediation for ${podName}`
+    );
 
+    try {
         const result =
             await runAnsibleRestart();
 
@@ -150,21 +151,119 @@ lastRemediation.set(
                 intervalMs: 5000
             });
 
+        if (recovery.status === "RECOVERED") {
+            return {
+                status: "RECOVERED",
+                pod: podName,
+                action: "ANSIBLE_RESTART",
+                result,
+                recovery
+            };
+        }
+
+        console.log(
+            `[AI REMEDIATOR] Ansible recovery failed`
+        );
+
+    } catch (error) {
+        console.log(
+            `[AI REMEDIATOR] Ansible remediation failed: ${error.message}`
+        );
+    }
+
+    // --------------------------------------------------
+    // Escalate persistent failure to GitOps rollback
+    // --------------------------------------------------
+
+    console.log(
+        `[AI REMEDIATOR] Escalating to GitOps rollback`
+    );
+
+    const rollbackPreview =
+        await rollbackToPreviousVersion();
+
+    if (
+        rollbackPreview.status !==
+        "ROLLBACK_REQUESTED"
+    ) {
+        return {
+            status: "ROLLBACK_FAILED",
+            pod: podName,
+            action: "ANSIBLE_THEN_ROLLBACK",
+            rollback: rollbackPreview
+        };
+    }
+
+    const previousImage =
+        rollbackPreview.previousImage;
+
+    if (!previousImage) {
+        return {
+            status: "ROLLBACK_FAILED",
+            pod: podName,
+            action: "ANSIBLE_THEN_ROLLBACK",
+            rollback: rollbackPreview,
+            reason: "Previous image was not found"
+        };
+    }
+
+    const rollbackAllowed =
+        startRollback(previousImage);
+
+    if (!rollbackAllowed) {
+        return {
+            status: "ROLLBACK_BLOCKED",
+            pod: podName,
+            action: "ESCALATE",
+            reason:
+                "Rollback already in progress or same image was already rolled back",
+            rollback: rollbackPreview
+        };
+    }
+
+    try {
+        console.log(
+            `[AI REMEDIATOR] Rollback target: ${previousImage}`
+        );
+
+        const rollbackRecovery =
+            await waitForRollbackRecovery({
+                expectedImage: previousImage,
+                timeoutMs: 120000,
+                intervalMs: 5000
+            });
+
+        const rollbackSucceeded =
+            rollbackRecovery.status ===
+            "ROLLBACK_RECOVERED";
+
+        finishRollback(
+            rollbackSucceeded,
+            previousImage
+        );
+
         return {
             status:
-                recovery.status === "RECOVERED"
-                    ? "RECOVERED"
-                    : "RECOVERY_TIMEOUT",
+                rollbackSucceeded
+                    ? "ROLLBACK_RECOVERED"
+                    : "ROLLBACK_FAILED",
 
             pod: podName,
 
-            action: "ANSIBLE_RESTART",
+            action: "ANSIBLE_THEN_ROLLBACK",
 
-            result,
+            rollback: rollbackPreview,
 
-            recovery
+            rollbackRecovery
         };
+
+    } catch (error) {
+
+        finishRollback(false);
+
+        throw error;
     }
+}
 
     // --------------------------------------------------
     // 6. Normal pod restart

@@ -421,14 +421,14 @@ export async function waitForRollbackRecovery({
 
     while (Date.now() - startTime < timeoutMs) {
         try {
-            const deployment =
+            const deploymentResponse =
                 await appsApi.readNamespacedDeployment({
                     name: DEPLOYMENT,
                     namespace: NAMESPACE
                 });
 
-            const currentImage =
-                deployment.spec?.template?.spec?.containers?.[0]?.image;
+            const deployment =
+                deploymentResponse;
 
             const desiredReplicas =
                 deployment.spec?.replicas || 0;
@@ -439,27 +439,55 @@ export async function waitForRollbackRecovery({
             const availableReplicas =
                 deployment.status?.availableReplicas || 0;
 
-            const imageRecovered =
-                currentImage === expectedImage;
+            const updatedReplicas =
+                deployment.status?.updatedReplicas || 0;
 
-            const replicasRecovered =
+            const unavailableReplicas =
+                deployment.status?.unavailableReplicas || 0;
+
+            const actualImage =
+                deployment.spec?.template?.spec
+                    ?.containers?.[0]?.image;
+
+            const actualCommand =
+                deployment.spec?.template?.spec
+                    ?.containers?.[0]?.command;
+
+            const imageMatches =
+                actualImage === expectedImage;
+
+            const rolloutComplete =
+                updatedReplicas >= desiredReplicas &&
                 readyReplicas >= desiredReplicas &&
-                availableReplicas >= desiredReplicas;
+                availableReplicas >= desiredReplicas &&
+                unavailableReplicas === 0;
 
-            if (
-                imageRecovered &&
-                replicasRecovered
-            ) {
+            const commandIsClean =
+                !actualCommand ||
+                actualCommand.length === 0;
+
+            const recovered =
+                imageMatches &&
+                rolloutComplete &&
+                commandIsClean;
+
+            if (recovered) {
                 return {
                     status: "ROLLBACK_RECOVERED",
 
-                    image: currentImage,
+                    image: actualImage,
+
+                    desiredReplicas,
+
+                    updatedReplicas,
 
                     readyReplicas,
 
                     availableReplicas,
 
-                    desiredReplicas,
+                    unavailableReplicas,
+
+                    command: actualCommand || null,
 
                     recoveryTimeSeconds:
                         Number(
@@ -470,9 +498,10 @@ export async function waitForRollbackRecovery({
                         )
                 };
             }
+
         } catch (error) {
             console.log(
-                `[AI ROLLBACK] Waiting for Kubernetes: ${error.message}`
+                `[AI ROLLBACK RECOVERY] ${error.message}`
             );
         }
 
@@ -485,10 +514,40 @@ export async function waitForRollbackRecovery({
         );
     }
 
+    const deploymentResponse =
+        await appsApi.readNamespacedDeployment({
+            name: DEPLOYMENT,
+            namespace: NAMESPACE
+        });
+
+    const deployment =
+        deploymentResponse;
+
     return {
         status: "ROLLBACK_TIMEOUT",
 
-        expectedImage,
+        image:
+            deployment.spec?.template?.spec
+                ?.containers?.[0]?.image,
+
+        desiredReplicas:
+            deployment.spec?.replicas || 0,
+
+        updatedReplicas:
+            deployment.status?.updatedReplicas || 0,
+
+        readyReplicas:
+            deployment.status?.readyReplicas || 0,
+
+        availableReplicas:
+            deployment.status?.availableReplicas || 0,
+
+        unavailableReplicas:
+            deployment.status?.unavailableReplicas || 0,
+
+        command:
+            deployment.spec?.template?.spec
+                ?.containers?.[0]?.command || null,
 
         recoveryTimeSeconds:
             Number(
@@ -499,3 +558,4 @@ export async function waitForRollbackRecovery({
             )
     };
 }
+

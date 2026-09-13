@@ -168,69 +168,116 @@ export async function rollbackGitOpsImage(
 }
 
 export async function rollbackToPreviousVersion() {
-    const currentImage =
-        await getGitOpsImage();
+    const currentImage = await getGitOpsImage();
 
-    const log =
-        await runGit([
-            "log",
-            "--format=%H",
-            "--",
-            MANIFEST
-        ]);
+    const log = await runGit([
+        "log",
+        "--format=%H",
+        "--",
+        MANIFEST
+    ]);
 
-    const commits =
-        log.stdout
-            .split(/\r?\n/)
-            .map((commit) => commit.trim())
-            .filter(Boolean);
+    const commits = log.stdout
+        .split(/\r?\n/)
+        .map((commit) => commit.trim())
+        .filter(Boolean);
 
     if (commits.length < 2) {
         return {
             status: "SKIPPED",
-            reason:
-                "No previous GitOps commit found"
+            reason: "No previous GitOps commit found"
         };
     }
 
-    const currentManifest =
-        await fs.readFile(
-            `${REPO_DIR}/${MANIFEST}`,
-            "utf8"
-        );
+    const manifestPath = `${REPO_DIR}/${MANIFEST}`;
 
+    const currentManifest = await fs.readFile(
+        manifestPath,
+        "utf8"
+    );
+
+    /*
+     * Search backwards for the nearest known-good manifest.
+     *
+     * A known-good manifest must:
+     * 1. Contain the expected application image.
+     * 2. NOT contain the intentional failure command.
+     */
     for (const commit of commits.slice(1)) {
+        let previousManifest;
 
-        const result =
-            await runGit([
+        try {
+            const result = await runGit([
                 "show",
                 `${commit}:${MANIFEST}`
             ]);
 
-        const previousManifest =
-            result.stdout;
-
-        const match =
-            previousManifest.match(
-                /image:\s*(saurav8789\/self-healing-node-app:\S+)/
+            previousManifest = result.stdout;
+        } catch (error) {
+            console.log(
+                `[AI GITOPS] Skipping commit ${commit}: manifest unavailable`
             );
+            continue;
+        }
+
+        const match = previousManifest.match(
+            /image:\s*(saurav8789\/self-healing-node-app:\S+)/
+        );
 
         if (!match) {
+            console.log(
+                `[AI GITOPS] Skipping ${commit}: application image not found`
+            );
             continue;
         }
 
-        const previousImage =
-            match[1];
+        const previousImage = match[1];
 
-        if (
-            previousManifest ===
-            currentManifest
-        ) {
+        /*
+         * Reject known failure-injection manifests.
+         *
+         * This prevents rollback from selecting a historical
+         * manifest that intentionally contains:
+         *
+         * command:
+         *   - /bin/sh
+         *   - -c
+         *   - exit 1
+         */
+        const hasFailureCommand =
+            previousManifest.includes(
+                'command: ["/bin/sh", "-c", "exit 1"]'
+            ) ||
+            (
+                previousManifest.includes("command:") &&
+                previousManifest.includes("/bin/sh") &&
+                previousManifest.includes("exit 1")
+            );
+
+        if (hasFailureCommand) {
+            console.log(
+                `[AI GITOPS] Skipping ${commit}: failure-injection manifest detected`
+            );
             continue;
         }
+
+        if (previousManifest === currentManifest) {
+            console.log(
+                `[AI GITOPS] Skipping ${commit}: manifest is identical`
+            );
+            continue;
+        }
+
+        console.log(
+            `[AI GITOPS] Selected known-good revision: ${commit}`
+        );
+
+        console.log(
+            `[AI GITOPS] Rollback image: ${previousImage}`
+        );
 
         await fs.writeFile(
-            `${REPO_DIR}/${MANIFEST}`,
+            manifestPath,
             previousManifest,
             "utf8"
         );
@@ -240,19 +287,17 @@ export async function rollbackToPreviousVersion() {
             MANIFEST
         ]);
 
-        const diff =
-            await runGit([
-                "diff",
-                "--cached",
-                "--",
-                MANIFEST
-            ]);
+        const diff = await runGit([
+            "diff",
+            "--cached",
+            "--",
+            MANIFEST
+        ]);
 
         if (!diff.stdout) {
             return {
                 status: "SKIPPED",
-                reason:
-                    "No GitOps manifest changes detected"
+                reason: "No GitOps manifest changes detected"
             };
         }
 
@@ -291,8 +336,7 @@ export async function rollbackToPreviousVersion() {
 
     return {
         status: "SKIPPED",
-        reason:
-            "No previous different GitOps manifest found"
+        reason: "No known-good previous GitOps manifest found"
     };
 }
 export async function previewRollback() {
